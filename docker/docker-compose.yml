@@ -1,0 +1,152 @@
+version: '3.8'
+
+services:
+  namenode:
+    container_name: namenode
+    image: apache/hadoop:3
+    hostname: namenode
+    ports:
+      - "9870:9870"
+      - "9000:9000"
+    environment:
+      - CLUSTER_NAME=hadoop
+    volumes:
+      - hadoop_namenode:/hadoop/dfs/name
+      - ./hadoop.env:/etc/hadoop/hadoop.env
+    networks:
+      - hadoop_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9870"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  datanode1:
+    container_name: datanode1
+    image: apache/hadoop:3
+    hostname: datanode1
+    ports:
+      - "9864:9864"
+    volumes:
+      - hadoop_datanode1:/hadoop/dfs/data
+      - ./hadoop.env:/etc/hadoop/hadoop.env
+    networks:
+      - hadoop_network
+    depends_on:
+      - namenode
+
+  datanode2:
+    container_name: datanode2
+    image: apache/hadoop:3
+    hostname: datanode2
+    ports:
+      - "9865:9864"
+    volumes:
+      - hadoop_datanode2:/hadoop/dfs/data
+      - ./hadoop.env:/etc/hadoop/hadoop.env
+    networks:
+      - hadoop_network
+    depends_on:
+      - namenode
+
+  hive-server:
+    container_name: hive-server
+    image: apache/hive:3
+    hostname: hive-server
+    ports:
+      - "10000:10000"
+      - "10002:10002"
+    environment:
+      - HIVE_SITE_CONF_javax_jdo_option_ConnectionURL=jdbc:postgresql://hive-metastore-postgresql/metastore
+      - HIVE_SITE_CONF_javax_jdo_option_ConnectionDriverName=org.postgresql.Driver
+      - HIVE_SITE_CONF_javax_jdo_option_ConnectionUserName=hive
+      - HIVE_SITE_CONF_javax_jdo_option_ConnectionPassword=hive
+    volumes:
+      - ./hive-site.xml:/opt/hive/conf/hive-site.xml
+    networks:
+      - hadoop_network
+    depends_on:
+      - namenode
+      - hive-metastore-postgresql
+
+  hive-metastore-postgresql:
+    container_name: hive-metastore-postgresql
+    image: postgres:13
+    hostname: hive-metastore-postgresql
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=metastore
+      - POSTGRES_USER=hive
+      - POSTGRES_PASSWORD=hive
+    volumes:
+      - postgresql_data:/var/lib/postgresql/data
+    networks:
+      - hadoop_network
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.0
+    container_name: elasticsearch
+    environment:
+      - node.name=elasticsearch
+      - cluster.name=es-docker-cluster
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - discovery.type=single-node
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - hadoop_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -vq '\"status\":\"red\"'"]
+      interval: 20s
+      timeout: 10s
+      retries: 3
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: backend
+    ports:
+      - "8000:8000"
+    environment:
+      - ELASTICSEARCH_HOST=elasticsearch
+      - HIVE_HOST=hive-server
+      - HADOOP_NAMENODE=namenode
+    networks:
+      - hadoop_network
+    depends_on:
+      - elasticsearch
+      - hive-server
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+    networks:
+      - hadoop_network
+    depends_on:
+      - backend
+
+volumes:
+  hadoop_namenode:
+  hadoop_datanode1:
+  hadoop_datanode2:
+  postgresql_data:
+  elasticsearch_data:
+
+networks:
+  hadoop_network:
+    driver: bridge

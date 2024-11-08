@@ -1,0 +1,164 @@
+# Données
+data/raw/
+data/processed/
+*.csv
+*.tar.gz
+*.gz
+
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+coverage.xml
+*.cover
+*.py,cover
+.coverage
+
+# Node.js
+node_modules/
+/build
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDEs et éditeurs
+.idea/
+.vscode/
+*.swp
+*.swo
+*.swn
+*.bak
+.project
+.classpath
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# Environnement
+.env
+.venv
+env/
+ENV/
+.env.local
+.env.*.local
+
+# Docker
+.docker/
+docker-compose.override.yml
+
+# Logs et databases
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.sqlite
+*.db
+
+# Système
+.DS_Store
+Thumbs.db
+*.tmp
+*.bak
+*.swp
+*~
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Desktop.ini
+
+# Sécurité
+*.pem
+*.key
+*.crt
+*.csr
+*.srl
+.ssh/
+*.jks
+*.p12
+*.pfx
+
+# Hadoop et ElasticSearch
+hadoop-data/
+elasticsearch-data/
+metastore_db/
+
+# Fichiers de configuration sensibles
+config/*.json
+!config/default.json
+!config/example.json
+*.cfg
+*.conf
+!example.conf
+
+# Documentation générée
+docs/_build/
+site/
+.jekyll-cache/
+.jekyll-metadata
+
+# Tests
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+
+# Fichiers temporaires
+tmp/
+temp/
+.temp/
+*.tmp
+*.bak
+*.swp
+*~.nib
+
+# Dépendances Java/Scala
+*.class
+*.log
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+hs_err_pid*
+
+# Paquets Python compilés
+*.pyc
+*.pyo
+*.pyd
+
+# Cache
+.cache/
+.npm/
+.yarn/
