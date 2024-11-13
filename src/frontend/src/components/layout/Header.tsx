@@ -1,7 +1,7 @@
 import { UserCircleIcon } from '@heroicons/react/24/outline';
 import { useState, useEffect, useRef } from 'react';
-import { useAuth } from '../../hooks/useAuth'; // Ajoutez cette import
-import { useNavigate } from 'react-router-dom'; // Ajoutez cette import
+import { useAuth } from '../../features/auth/AuthProvider';
+import { useNavigate } from 'react-router-dom';
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);

@@ -34,8 +34,9 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSubmit }) => {
     try {
       setLoginError('');
       await onSubmit(data);
-    } catch (error) {
-      setLoginError('Email ou mot de passe incorrect');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Email ou mot de passe incorrect';
+      setLoginError(errorMessage);
     }
   };
 

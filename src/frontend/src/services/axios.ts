@@ -1,13 +1,13 @@
 // src/services/axios.ts
 import axios, { AxiosError, AxiosRequestConfig } from "axios";
-import { authService } from "./auth.service";
+import * as AuthServiceNamespace from "./auth.service";
 import type { AuthResponse } from '../features/auth/types';
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 interface QueueItem {
-  resolve: (value: unknown) => void;
-  reject: (reason?: any) => void;
+  resolve: (value: string) => void;
+  reject: (reason: Error) => void;
 }
 
 let isRefreshing = false;
@@ -17,7 +17,7 @@ const processQueue = (error: Error | null, token: string | null = null) => {
   failedQueue.forEach(prom => {
     if (error) {
       prom.reject(error);
-    } else {
+    } else if (token) {
       prom.resolve(token);
     }
   });
@@ -32,7 +32,7 @@ export const axiosInstance = axios.create({
 });
 
 const refreshAccessToken = async (): Promise<AuthResponse> => {
-  const refreshToken = authService.getRefreshToken();
+  const refreshToken = AuthServiceNamespace.authService.getRefreshToken();
   if (!refreshToken) {
     throw new Error('No refresh token available');
   }
@@ -46,7 +46,7 @@ const refreshAccessToken = async (): Promise<AuthResponse> => {
 
 axiosInstance.interceptors.request.use(
   (config) => {
-    const token = authService.getAccessToken();
+    const token = AuthServiceNamespace.authService.getAccessToken();
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -63,10 +63,10 @@ axiosInstance.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       if (isRefreshing) {
         try {
-          const token = await new Promise((resolve, reject) => {
+          const token = await new Promise<string>((resolve, reject) => {
             failedQueue.push({ resolve, reject });
           });
-          if (originalRequest.headers && typeof token === 'string') {
+          if (originalRequest.headers) {
             originalRequest.headers.Authorization = `Bearer ${token}`;
           }
           return axiosInstance(originalRequest);
@@ -80,7 +80,7 @@ axiosInstance.interceptors.response.use(
 
       try {
         const response = await refreshAccessToken();
-        authService.setTokens(response.access_token, response.refresh_token);
+        AuthServiceNamespace.authService.setTokens(response.access_token, response.refresh_token);
         processQueue(null, response.access_token);
 
         if (originalRequest.headers) {
@@ -89,8 +89,7 @@ axiosInstance.interceptors.response.use(
         return axiosInstance(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError as Error, null);
-        authService.clearTokens();
-        // Au lieu d'utiliser navigateToLogin, on laisse AuthProvider gérer la redirection
+        AuthServiceNamespace.authService.clearTokens();
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;
@@ -102,40 +101,3 @@ axiosInstance.interceptors.response.use(
 );
 
 export default axiosInstance;
-
-// src/services/auth.service.ts
-import { jwtDecode } from "jwt-decode";
-
-export class AuthService {
-  private readonly ACCESS_TOKEN_KEY = "auth_token";
-  private readonly REFRESH_TOKEN_KEY = "refresh_token";
-
-  getAccessToken(): string | null {
-    return localStorage.getItem(this.ACCESS_TOKEN_KEY);
-  }
-
-  getRefreshToken(): string | null {
-    return localStorage.getItem(this.REFRESH_TOKEN_KEY);
-  }
-
-  setTokens(accessToken: string, refreshToken: string): void {
-    localStorage.setItem(this.ACCESS_TOKEN_KEY, accessToken);
-    localStorage.setItem(this.REFRESH_TOKEN_KEY, refreshToken);
-  }
-
-  clearTokens(): void {
-    localStorage.removeItem(this.ACCESS_TOKEN_KEY);
-    localStorage.removeItem(this.REFRESH_TOKEN_KEY);
-  }
-
-  isTokenExpired(token: string): boolean {
-    try {
-      const decoded = jwtDecode<{ exp: number }>(token);
-      return decoded.exp * 1000 < Date.now();
-    } catch {
-      return true;
-    }
-  }
-}
-
-export const authService = new AuthService();

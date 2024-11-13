@@ -26,7 +26,22 @@ const mockWeatherData: WeatherData[] = [
     windSpeed: 12,
     station: 'Station A'
   },
-  // ... ajoutez plus de données fictives ici
+  {
+    date: '2024-04-02',
+    temperature: 30,
+    humidity: 40,
+    precipitation: 0,
+    windSpeed: 6,
+    station: 'Station B'
+  },
+  {
+    date: '2024-06-07',
+    temperature: 35,
+    humidity: 20,
+    precipitation: 0,
+    windSpeed: 2,
+    station: 'Station C'
+  },
 ];
 
 const WeatherPage = () => {

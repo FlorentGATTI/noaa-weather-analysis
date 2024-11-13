@@ -11,6 +11,14 @@ interface AuthContextType {
   user: User | null;
 }
 
+// Interface pour le contenu décodé du JWT
+interface JWTPayload {
+  exp: number;
+  user: User;
+  // Ajoutez d'autres champs si nécessaire
+  [key: string]: unknown;
+}
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const useAuth = () => {
@@ -35,7 +43,7 @@ export function AuthProvider() {
       }
 
       try {
-        const decoded = jwtDecode<any>(token);
+        const decoded = jwtDecode<JWTPayload>(token);
         if (decoded.exp && decoded.exp * 1000 < Date.now()) {
           logout();
           return;
@@ -46,7 +54,8 @@ export function AuthProvider() {
           setUser(JSON.parse(savedUser));
           setIsAuthenticated(true);
         }
-      } catch {
+      } catch (error) {
+        console.error('Error checking authentication:', error);
         logout();
       }
     };
@@ -72,9 +81,18 @@ export function AuthProvider() {
     navigate('/login');
   };
 
+  const value = {
+    login,
+    logout,
+    isAuthenticated,
+    user
+  };
+
   return (
-    <AuthContext.Provider value={{ login, logout, isAuthenticated, user }}>
+    <AuthContext.Provider value={value}>
       <Outlet />
     </AuthContext.Provider>
   );
 }
+
+export default AuthProvider;
