@@ -7,3 +7,13 @@ python-dotenv==1.0.0
 pyhive==0.7.0
 thrift==0.16.0
 thrift-sasl==0.4.3
+python-jose[cryptography]==3.3.0
+passlib==1.7.4
+pydantic==2.5.3
+pydantic-settings==2.1.0
+python-multipart==0.0.6
+motor==3.3.2
+pytest==7.4.4
+httpx==0.26.0
+bcrypt==4.1.2
+email-validator==2.1.0

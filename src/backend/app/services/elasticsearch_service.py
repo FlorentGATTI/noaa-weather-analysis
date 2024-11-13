@@ -1,0 +1,2 @@
+class ElasticsearchService:
+    pass
