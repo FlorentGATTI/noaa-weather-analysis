@@ -53,7 +53,15 @@ const authApi = {
   },
 
   refreshToken: async (refresh_token: string): Promise<{ data: AuthResponse }> => {
+    // Vérifier si le refresh token est valide (simulation)
+    if (!refresh_token) {
+      throw new Error('Invalid refresh token');
+    }
+
     await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // En production, vous voudriez valider le refresh_token ici
+    // Pour la démo, on génère simplement de nouveaux tokens
     const access_token = createMockJWT(mockUser);
     const new_refresh_token = createMockJWT(mockUser);
 

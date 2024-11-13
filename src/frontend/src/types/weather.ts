@@ -2,10 +2,11 @@
 
 export interface WeatherData {
   date: string;
-  temp: number;
   humidity?: number;
   windSpeed?: number;
   precipitation?: number;
+  temperature?: number;
+  station?: string;
 }
 
 export interface WeatherSummary {
