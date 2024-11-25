@@ -1,78 +1,103 @@
 version: '3.8'
 
 services:
+  # Service Hadoop - NameNode
   namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
     container_name: namenode
-    image: apache/hadoop:3
-    hostname: namenode
+    restart: always
     ports:
-      - "9870:9870"
-      - "9000:9000"
-    environment:
-      - CLUSTER_NAME=hadoop
+      - "9870:9870"  # Interface Web
+      - "9000:9000"  # Communication HDFS
     volumes:
       - hadoop_namenode:/hadoop/dfs/name
-      - ./hadoop.env:/etc/hadoop/hadoop.env
-    networks:
-      - hadoop_network
+      - ./data:/data
+    environment:
+      - CLUSTER_NAME=hadoop_cluster
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - CORE_CONF_hadoop_http_staticuser_user=root
+      - HDFS_CONF_dfs_webhdfs_enabled=true
+      - HDFS_CONF_dfs_permissions_enabled=false
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9870"]
       interval: 30s
       timeout: 10s
       retries: 3
-
-  datanode1:
-    container_name: datanode1
-    image: apache/hadoop:3
-    hostname: datanode1
-    ports:
-      - "9864:9864"
-    volumes:
-      - hadoop_datanode1:/hadoop/dfs/data
-      - ./hadoop.env:/etc/hadoop/hadoop.env
     networks:
       - hadoop_network
-    depends_on:
-      - namenode
+    deploy:
+      resources:
+        limits:
+          memory: 2G
 
-  datanode2:
-    container_name: datanode2
-    image: apache/hadoop:3
-    hostname: datanode2
-    ports:
-      - "9865:9864"
+  # Service Hadoop - DataNode
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode
+    restart: always
     volumes:
-      - hadoop_datanode2:/hadoop/dfs/data
-      - ./hadoop.env:/etc/hadoop/hadoop.env
-    networks:
-      - hadoop_network
-    depends_on:
-      - namenode
-
-  hive-server:
-    container_name: hive-server
-    image: apache/hive:3
-    hostname: hive-server
-    ports:
-      - "10000:10000"
-      - "10002:10002"
+      - hadoop_datanode:/hadoop/dfs/data
     environment:
-      - HIVE_SITE_CONF_javax_jdo_option_ConnectionURL=jdbc:postgresql://hive-metastore-postgresql/metastore
-      - HIVE_SITE_CONF_javax_jdo_option_ConnectionDriverName=org.postgresql.Driver
-      - HIVE_SITE_CONF_javax_jdo_option_ConnectionUserName=hive
-      - HIVE_SITE_CONF_javax_jdo_option_ConnectionPassword=hive
+      - SERVICE_PRECONDITION=namenode:9870
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+    networks:
+      - hadoop_network
+    depends_on:
+      namenode:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  # Service HBase
+  hbase:
+    image: bde2020/hbase-standalone:1.0.0-hbase1.2.6
+    container_name: hbase
+    restart: always
+    ports:
+      - "16000:16000"  # HBase Master
+      - "16010:16010"  # HBase Master Web UI
+      - "16020:16020"  # HBase Regionserver
+      - "16030:16030"  # HBase Regionserver Web UI
+    environment:
+      - SERVICE_PRECONDITION=namenode:9870
+      - HBASE_CONF_hbase_rootdir=hdfs://namenode:9000/hbase
+      - HBASE_CONF_hbase_cluster_distributed=true
+      - HBASE_CONF_hbase_zookeeper_quorum=zookeeper
     volumes:
-      - ./hive-site.xml:/opt/hive/conf/hive-site.xml
+      - ./data:/data
     networks:
       - hadoop_network
     depends_on:
       - namenode
-      - hive-metastore-postgresql
+      - zookeeper
+    deploy:
+      resources:
+        limits:
+          memory: 2G
 
+  # Service ZooKeeper
+  zookeeper:
+    image: zookeeper:3.6
+    container_name: zookeeper
+    restart: always
+    ports:
+      - "2181:2181"
+    environment:
+      - ZOO_MY_ID=1
+    networks:
+      - hadoop_network
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # Service Hive Metastore PostgreSQL
   hive-metastore-postgresql:
+    image: postgres:12
     container_name: hive-metastore-postgresql
-    image: postgres:13
-    hostname: hive-metastore-postgresql
+    restart: always
     ports:
       - "5432:5432"
     environment:
@@ -80,73 +105,181 @@ services:
       - POSTGRES_USER=hive
       - POSTGRES_PASSWORD=hive
     volumes:
-      - postgresql_data:/var/lib/postgresql/data
+      - hive_metastore_postgresql:/var/lib/postgresql/data
     networks:
       - hadoop_network
+    deploy:
+      resources:
+        limits:
+          memory: 1G
 
+  # Service Hive Server
+  hive-server:
+    image: bde2020/hive:2.3.2-postgresql-metastore
+    container_name: hive-server
+    restart: always
+    ports:
+      - "10000:10000"  # Thrift
+      - "10002:10002"  # Web UI
+    environment:
+      - HIVE_CORE_CONF_javax_jdo_option_ConnectionURL=jdbc:postgresql://hive-metastore-postgresql/metastore
+      - HIVE_CORE_CONF_javax_jdo_option_ConnectionDriverName=org.postgresql.Driver
+      - HIVE_CORE_CONF_javax_jdo_option_ConnectionUserName=hive
+      - HIVE_CORE_CONF_javax_jdo_option_ConnectionPassword=hive
+      - HIVE_CORE_CONF_hive_metastore_uris=thrift://hive-metastore:9083
+      - SERVICE_PRECONDITION="namenode:9870 datanode:9864 hive-metastore:9083"
+    networks:
+      - hadoop_network
+    depends_on:
+      - namenode
+      - hive-metastore
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  # Service Hive Metastore
+  hive-metastore:
+    image: bde2020/hive:2.3.2-postgresql-metastore
+    container_name: hive-metastore
+    restart: always
+    ports:
+      - "9083:9083"
+    environment:
+      - SERVICE_PRECONDITION="namenode:9870 datanode:9864 hive-metastore-postgresql:5432"
+    command: /opt/hive/bin/hive --service metastore
+    networks:
+      - hadoop_network
+    depends_on:
+      - namenode
+      - hive-metastore-postgresql
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  # Service ElasticSearch
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.9
     container_name: elasticsearch
+    restart: always
+    ports:
+      - "9200:9200"
+      - "9300:9300"
     environment:
       - node.name=elasticsearch
       - cluster.name=es-docker-cluster
-      - bootstrap.memory_lock=true
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
       - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+      - xpack.security.enabled=false
     ulimits:
       memlock:
         soft: -1
         hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
-    ports:
-      - "9200:9200"
     networks:
       - hadoop_network
     healthcheck:
-      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -vq '\"status\":\"red\"'"]
-      interval: 20s
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 30s
       timeout: 10s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 2G
 
+  # Service MongoDB
+  mongodb:
+    image: mongo:6
+    container_name: mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=admin
+      - MONGO_INITDB_DATABASE=noaa_weather
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - hadoop_network
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # Service Backend
   backend:
     build:
-      context: ./backend
+      context: ./src/backend
       dockerfile: Dockerfile
     container_name: backend
+    restart: always
     ports:
       - "8000:8000"
     environment:
       - ELASTICSEARCH_HOST=elasticsearch
-      - HIVE_HOST=hive-server
+      - ELASTICSEARCH_PORT=9200
       - HADOOP_NAMENODE=namenode
+      - HADOOP_NAMENODE_PORT=9000
+      - HBASE_HOST=hbase
+      - HBASE_PORT=16000
+      - HIVE_HOST=hive-server
+      - HIVE_PORT=10000
+      - MONGODB_URI=mongodb://admin:admin@mongodb:27017/
+      - JWT_SECRET=your-secret-key-change-in-production
+      - DEBUG=1
+    volumes:
+      - ./data:/app/data
+      - ./src/backend:/app
     networks:
       - hadoop_network
     depends_on:
-      - elasticsearch
-      - hive-server
+      elasticsearch:
+        condition: service_healthy
+      namenode:
+        condition: service_healthy
+      mongodb:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 1G
 
+  # Service Frontend
   frontend:
     build:
-      context: ./frontend
+      context: ./src/frontend
       dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=http://localhost:8000
     container_name: frontend
+    restart: always
     ports:
-      - "3000:3000"
-    environment:
-      - REACT_APP_API_URL=http://localhost:8000
+      - "80:80"
     networks:
       - hadoop_network
     depends_on:
       - backend
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
 volumes:
   hadoop_namenode:
-  hadoop_datanode1:
-  hadoop_datanode2:
-  postgresql_data:
+  hadoop_datanode:
+  hive_metastore_postgresql:
   elasticsearch_data:
+  mongodb_data:
 
 networks:
   hadoop_network:
     driver: bridge
+    name: hadoop_network
