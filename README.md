@@ -3,87 +3,102 @@
 Projet d'analyse de données météorologiques Big Data utilisant l'écosystème Hadoop avec des données de la NOAA.
 
 ## 📋 Description
+
 Ce projet vise à créer une plateforme d'analyse de données météorologiques pour prévoir les tendances climatiques et aider les agriculteurs à optimiser leurs récoltes. Il utilise l'écosystème Hadoop pour le traitement des données et ElasticSearch pour la recherche avancée.
 
 ## 📁 Structure du projet
+
 ```
 noaa-weather-analysis/
+├── backup/                # Service de backup automatisé
+├── config/               # Fichiers de configuration
+│   ├── .env             # Variables d'environnement
+│   └── hadoop.env       # Configuration Hadoop
 ├── data/
-│   ├── raw/              # Données brutes de la NOAA
-│   │   ├── gsod/        # Global Surface Summary of the Day
-│   │   ├── isd/         # Integrated Surface Database
+│   ├── raw/             # Données brutes de la NOAA
+│   │   ├── gsod/       # Global Surface Summary of the Day
+│   │   ├── isd/        # Integrated Surface Database
 │   │   └── storm_events/ # Storm Events Database
-│   └── processed/        # Données traitées
-├── src/
-│   ├── backend/         # API FastAPI/Flask
-│   └── frontend/        # Application React
-├── docker/
-│   └── services/        # Configurations des services Docker
+│   └── processed/       # Données traitées
+├── datanode/            # Configuration DataNode
+├── deploy/              # Scripts de déploiement
 ├── docs/
 │   ├── architecture/    # Documentation architecture
 │   ├── api/            # Documentation API
 │   └── security/       # Documentation sécurité
-└── scripts/
-    ├── data_ingestion/ # Scripts d'importation
-    └── backup/         # Scripts de sauvegarde
+├── hbase/              # Configuration HBase
+├── namenode/           # Configuration NameNode
+├── prometheus/         # Monitoring Prometheus
+├── scripts/
+│   └── data_ingestion/ # Scripts d'importation
+├── security/
+│   ├── elastic-certificates/  # Certificats SSL Elasticsearch
+│   └── kerberos/      # Configuration Kerberos
+├── spark/             # Configuration Spark
+└── src/
+    ├── backend/       # API FastAPI
+    └── frontend/      # Application React
 ```
 
 ## 🛠 Technologies utilisées
-- **Big Data** 
+
+- **Big Data**
   - Hadoop 3.x
   - HDFS
   - YARN
   - HBase
-  - Hive
-- **Recherche** 
-  - ElasticSearch 7.17.0
-- **Backend** 
+  - Apache Spark
+- **Recherche et Stockage**
+  - ElasticSearch 8.12.2
+  - PostgreSQL 15
+- **Backend**
   - FastAPI
-  - Python 3.8+
-- **Frontend** 
-  - React.js
+  - Python 3.11+
+- **Frontend**
+  - React.js avec TypeScript
   - TailwindCSS
-- **Conteneurisation** 
+- **Monitoring**
+  - Prometheus
+  - Grafana
+- **Conteneurisation**
   - Docker
   - Docker Compose
-- **Sécurité** 
+- **Sécurité**
   - Kerberos
   - SSL/TLS
-- **Base de données** 
-  - HBase
-  - HDFS
+  - JWT Authentication
 
 ## ⚙️ Prérequis
+
 - Docker et Docker Compose
-- Python 3.8+
-- Node.js 14+
+- Python 3.11+
+- Node.js 16+
 - Git
-- 8GB RAM minimum
-- 20GB espace disque minimum
+- 16GB RAM minimum
+- 50GB espace disque minimum
 
 ## 📥 Installation
 
 1. Cloner le repository
+
 ```bash
 git clone git@github.com:FlorentGATTI/noaa-weather-analysis.git
 cd noaa-weather-analysis
 ```
 
-2. Configurer l'environnement Python
+2. Configurer l'environnement
+
 ```bash
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# ou
-.\venv\Scripts\activate  # Windows
-pip install -r requirements.txt
+# Copier et configurer le fichier .env
+cp config/.env.example config/.env
+
+# Générer les certificats SSL pour Elasticsearch
+cd security/elastic-certificates
+./generate-certificates.sh
 ```
 
-3. Télécharger les données NOAA
-```bash
-python scripts/data_ingestion/download_noaa_data.py
-```
+3. Démarrer les services
 
-4. Démarrer les services Docker
 ```bash
 docker-compose up -d
 ```
@@ -91,70 +106,73 @@ docker-compose up -d
 ## 🔧 Configuration
 
 ### Services et ports
+
 - **Hadoop**
-  - NameNode: http://localhost:9870
-  - DataNode1: http://localhost:9864
-  - DataNode2: http://localhost:9865
-- **Hive**
-  - HiveServer2: http://localhost:10002
+  - NameNode UI: http://localhost:9870
+  - HDFS: port 9000
+  - YARN ResourceManager: port 8088
+- **Spark**
+  - Master UI: http://localhost:8080
+  - Worker UI: port 8081
+  - Application UI: port 4040
+- **HBase**
+  - Master UI: http://localhost:16010
 - **ElasticSearch**
-  - API: http://localhost:9200
+  - API: https://localhost:9200
 - **Application**
   - Frontend: http://localhost:3000
   - Backend API: http://localhost:8000
-
-### Variables d'environnement
-Créez un fichier `.env` à la racine du projet :
-```
-ELASTICSEARCH_HOST=localhost
-HIVE_HOST=localhost
-API_KEY=votre_clé_api
-```
+- **Monitoring**
+  - Grafana: http://localhost:3001
+  - Prometheus: http://localhost:9090
 
 ## 📊 Sources de données NOAA
 
 ### Données structurées
+
 1. GSOD (Global Surface Summary of the Day)
    - Source: https://www.ncei.noaa.gov/data/global-summary-of-the-day/access/
-   - Format: CSV
-   - Fréquence: Quotidienne
-
+   - Période: 2019-2023
 2. ISD (Integrated Surface Database)
    - Source: https://www.ncei.noaa.gov/products/land-based-station/integrated-surface-database
-   - Format: CSV
-   - Fréquence: Horaire
+   - Période: 2019-2023
 
 ### Données non structurées
+
 - Storm Events Database
   - Source: https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/
-  - Format: CSV avec champs texte
-  - Contenu: Rapports détaillés d'événements météorologiques
+  - Période: 2019-2023
 
 ## 🔒 Sécurité
+
 - Authentification Kerberos pour Hadoop
-- Chiffrement HDFS pour les données au repos
-- SSL/TLS pour les communications
-- API Key pour l'accès à l'API
-- CORS configuré pour le développement
+- SSL/TLS pour Elasticsearch
+- JWT pour l'authentification API
+- Backup automatisé avec chiffrement
+- Monitoring et alertes avec Prometheus/Grafana
 
 ## 🔄 Maintenance
+
 ### Sauvegardes
-```bash
-# Sauvegarde manuelle
-./scripts/backup/backup.sh
 
-# Restauration
-./scripts/backup/restore.sh <date_backup>
-```
+Les sauvegardes sont automatisées via le service backup-service:
 
-### Logs
-Les logs sont stockés dans:
-- `/logs/hadoop/` pour Hadoop
-- `/logs/elastic/` pour ElasticSearch
-- `/logs/application/` pour l'application
+- Fréquence: Quotidienne
+- Rétention: 7 jours
+- Chiffrement: AES-256
+
+### Monitoring
+
+- Tableaux de bord Grafana pour:
+  - Métriques Hadoop
+  - Performance Elasticsearch
+  - Métriques applicatives
+  - Alertes de sécurité
 
 ## 👨‍💻 Contributeurs
+
 - Florent GATTI
 
 ## 📝 Licence
+
 Ce projet est sous licence MIT.

@@ -1,0 +1,397 @@
+services:
+  namenode:
+    build:
+      context: ./namenode
+    container_name: namenode
+    hostname: namenode
+    ports:
+      - "9870:9870"
+      - "9000:9000"
+      - "8088:8088"
+    volumes:
+      - namenode_data:/hadoopdata
+      - ./data/raw:/data/raw:ro
+      - ./data/processed:/data/processed
+    environment:
+      - HDFS_NAMENODE_USER=root
+      - HDFS_DATANODE_USER=root
+      - HDFS_SECONDARYNAMENODE_USER=root
+      - YARN_RESOURCEMANAGER_USER=root
+      - YARN_NODEMANAGER_USER=root
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2'
+    healthcheck:
+      test: [ "CMD", "hdfs", "dfsadmin", "-report" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - hadoop-net
+
+  datanode1:
+    build:
+      context: ./datanode
+    container_name: datanode1
+    hostname: datanode1
+    depends_on:
+      - namenode
+    volumes:
+      - datanode1_data:/hadoopdata
+    environment:
+      - HDFS_NAMENODE_USER=root
+      - HDFS_DATANODE_USER=root
+      - HDFS_SECONDARYNAMENODE_USER=root
+      - YARN_RESOURCEMANAGER_USER=root
+      - YARN_NODEMANAGER_USER=root
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2'
+    networks:
+      - hadoop-net
+
+  datanode2:
+    build:
+      context: ./datanode
+    container_name: datanode2
+    hostname: datanode2
+    depends_on:
+      - namenode
+    volumes:
+      - datanode2_data:/hadoopdata
+    environment:
+      - HDFS_NAMENODE_USER=root
+      - HDFS_DATANODE_USER=root
+      - HDFS_SECONDARYNAMENODE_USER=root
+      - YARN_RESOURCEMANAGER_USER=root
+      - YARN_NODEMANAGER_USER=root
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2'
+    networks:
+      - hadoop-net
+
+  spark-master:
+    build:
+      context: ./spark
+    container_name: spark-master
+    hostname: spark-master
+    depends_on:
+      - namenode
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+      - "4040:4040"
+    environment:
+      - SPARK_MODE=master
+      - SPARK_MASTER_HOST=spark-master
+      - SPARK_MASTER_PORT=7077
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=2g
+      - HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: '2'
+    volumes:
+      - ./data:/data
+      - ./scripts/data_ingestion/scripts:/app/scripts
+    networks:
+      - hadoop-net
+
+  spark-worker:
+    build:
+      context: ./spark
+    container_name: spark-worker
+    hostname: spark-worker
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=2g
+      - HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./data:/data
+      - spark_worker_data:/spark
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2'
+    networks:
+      - hadoop-net
+
+  hbase:
+    build:
+      context: ./hbase
+    container_name: hbase
+    hostname: hbase
+    depends_on:
+      - namenode
+      - zookeeper
+    ports:
+      - "16000:16000"
+      - "16010:16010"
+    environment:
+      - HBASE_CONF_hbase_rootdir=hdfs://namenode:9000/hbase
+      - HBASE_CONF_hbase_cluster_distributed=true
+      - HBASE_CONF_hbase_zookeeper_quorum=zookeeper
+      - HBASE_CONF_hbase_master_port=16000
+      - HBASE_CONF_hbase_master_info_port=16010
+      - HBASE_OPTS=-XX:+UseConcMarkSweepGC
+      - HBASE_MANAGES_ZK=false
+      - HBASE_CONF_hbase_zookeeper_property_clientPort=2181
+      - HBASE_CONF_hbase_regionserver_hostname=hbase-regionserver
+      - JAVA_HOME=/usr/local/openjdk-8
+      - HBASE_CONF_hbase_zookeeper_property_initLimit=5
+      - HBASE_CONF_hbase_zookeeper_property_syncLimit=2
+      - HBASE_CONF_hbase_zookeeper_property_dataDir=/data/zookeeper
+      - HBASE_HEAPSIZE=4G
+      - HADOOP_USER_NAME=root
+      - SERVICE_PRECONDITION="namenode:9000 namenode:9870 datanode1:9864 datanode2:9864 zookeeper:2181"
+    restart: on-failure
+    healthcheck:
+      test: hbase version
+    networks:
+      - hadoop-net
+    volumes:
+      - hbase_data:/opt/hbase/data
+
+  hbase-regionserver:
+    build:
+      context: ./hbase
+      dockerfile: Dockerfile.regionserver
+    container_name: hbase-regionserver
+    hostname: hbase-regionserver
+    depends_on:
+      hbase:
+        condition: service_healthy
+      zookeeper:
+        condition: service_started
+    ports:
+      - "16020:16020"
+      - "16030:16030"
+    environment:
+      - HBASE_CONF_hbase_regionserver_hostname=hbase-regionserver
+      - HBASE_CONF_hbase_zookeeper_quorum=zookeeper
+      - HBASE_CONF_hbase_regionserver_port=16020
+      - HBASE_CONF_hbase_regionserver_info_port=16030
+      - HBASE_CONF_hbase_rootdir=hdfs://namenode:9000/hbase
+      - HBASE_CONF_hbase_cluster_distributed=true
+      - HBASE_OPTS=-XX:+UseConcMarkSweepGC
+      - HBASE_MANAGES_ZK=false
+      - SERVICE_PRECONDITION=namenode:9000 zookeeper:2181 hbase:16000
+      - HBASE_CONF_hbase_master_hostname=hbase
+      - HBASE_CONF_hbase_master=hbase:16000
+      - HBASE_REGIONSERVER_OPTS=-XX:+UseConcMarkSweepGC
+    networks:
+      - hadoop-net
+
+  zookeeper:
+    image: zookeeper:3.7
+    container_name: zookeeper
+    hostname: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      - ZOO_MY_ID=1
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2'
+    volumes:
+      - zookeeper_data:/data
+    networks:
+      - hadoop-net
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.2
+    platform: linux/arm64
+    container_name: elasticsearch
+    environment:
+      - node.name=elasticsearch01
+      - cluster.name=es-docker-cluster
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - xpack.security.enabled=false
+      - xpack.security.transport.ssl.enabled=false
+      - xpack.security.http.ssl.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - hadoop-net
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    hostname: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=noaa_weather
+      - POSTGRES_USER=weather_admin
+      - POSTGRES_PASSWORD=changeme_in_production
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U weather_admin -d noaa_weather" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hadoop-net
+
+  backend:
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile
+    container_name: backend
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - ELASTICSEARCH_HOST=elasticsearch
+      - ELASTICSEARCH_PORT=9200
+      - HADOOP_NAMENODE=namenode
+      - HADOOP_NAMENODE_PORT=9000
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - JWT_SECRET=your-secret-key-change-in-production
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=noaa_weather
+      - POSTGRES_USER=weather_admin
+      - POSTGRES_PASSWORD=changeme_in_production
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2'
+    volumes:
+      - ./data:/data:ro
+      - ./src/backend:/app
+    depends_on:
+      - postgres
+      - elasticsearch
+      - spark-master
+    networks:
+      - hadoop-net
+
+  frontend:
+    build:
+      context: ./src/frontend
+    container_name: frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2'
+    networks:
+      - hadoop-net
+  # hive:
+  #   build:
+  #     context: ./hive
+  #   container_name: hive
+  #   hostname: hive
+  #   ports:
+  #     - "10000:10000"      # HiveServer2
+  #     - "10002:10002"      # HiveServer2 Web UI
+  #   environment:
+  #     - HIVE_SITE_CONF_javax_jdo_option_ConnectionURL=jdbc:postgresql://postgres:5432/hive_metastore
+  #     - HIVE_SITE_CONF_javax_jdo_option_ConnectionDriverName=org.postgresql.Driver
+  #     - HIVE_SITE_CONF_javax_jdo_option_ConnectionUserName=hive
+  #     - HIVE_SITE_CONF_javax_jdo_option_ConnectionPassword=hive_password
+  #     - HIVE_SITE_CONF_datanucleus_autoCreateSchema=false
+  #     - HIVE_SITE_CONF_hive_metastore_uris=thrift://hive:9083
+  #     - HDFS_CONF_dfs_namenode_datanode_registration_ip___hostname___check=false
+  #     - SERVICE_PRECONDITION=namenode:9000 namenode:9870 datanode1:9864 datanode2:9864
+  #   volumes:
+  #     - ./data:/data
+  #   depends_on:
+  #     - namenode
+  #     - datanode1
+  #     - datanode2
+  #     - postgres
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: 2G
+  #         cpus: '2'
+  #   networks:
+  #     - hadoop-net
+
+  # hive-metastore:
+  #   build:
+  #     context: ./hive
+  #     dockerfile: Dockerfile.metastore
+  #   container_name: hive-metastore
+  #   hostname: hive-metastore
+  #   ports:
+  #     - "9083:9083"        # Metastore port
+  #   environment:
+  #     - DB_DRIVER=postgres
+  #     - DB_HOST=postgres
+  #     - DB_PORT=5432
+  #     - DB_NAME=hive_metastore
+  #     - DB_USER=hive
+  #     - DB_PASS=hive_password
+  #   depends_on:
+  #     - postgres
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         memory: 2G
+  #         cpus: '2'
+  #   networks:
+  #     - hadoop-net
+
+volumes:
+  namenode_data:
+  datanode1_data:
+  datanode2_data:
+  spark_data:
+  spark_worker_data:
+  elasticsearch_data:
+  zookeeper_data:
+  postgres_data:
+  hbase_data:
+
+
+networks:
+  hadoop-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
