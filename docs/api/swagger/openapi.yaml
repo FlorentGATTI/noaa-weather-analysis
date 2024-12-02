@@ -1,0 +1,40 @@
+openapi: 3.0.0
+info:
+  title: NOAA Weather Analysis API
+  version: 1.0.0
+  description: API for analyzing NOAA weather data
+paths:
+  /api/weather:
+    get:
+      summary: Get weather data
+      parameters:
+        - name: start_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+  /api/storm-events:
+    get:
+      summary: Get storm events
+      responses:
+        "200":
+          description: List of storm events

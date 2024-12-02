@@ -1,0 +1,35 @@
+graph TD
+    Client[Client Browser] --> Frontend[Frontend React App]
+    Frontend --> Backend[FastAPI Backend]
+    Backend --> Elasticsearch[Elasticsearch]
+    Backend --> HBase[HBase]
+    Backend --> Spark[Spark]
+
+    subgraph Data Storage
+        HBase --> HDFS[HDFS]
+        HDFS --> NameNode[NameNode]
+        HDFS --> DataNode1[DataNode 1]
+        HDFS --> DataNode2[DataNode 2]
+    end
+
+    subgraph Data Processing
+        Spark --> HDFS
+        DataIngestion[Data Ingestion] --> HDFS
+        DataIngestion --> HBase
+        DataIngestion --> Elasticsearch
+    end
+
+    subgraph Monitoring
+        Prometheus --> Grafana
+        Backend --> Prometheus
+        HDFS --> Prometheus
+        Spark --> Prometheus
+    end
+
+    subgraph Security
+        Kerberos --> HDFS
+        Kerberos --> HBase
+        BackupService --> HDFS
+        BackupService --> HBase
+        BackupService --> Elasticsearch
+    end

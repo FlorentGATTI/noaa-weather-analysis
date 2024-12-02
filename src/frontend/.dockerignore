@@ -1,0 +1,4 @@
+echo "node_modules
+npm-debug.log
+dist
+.DS_Store" > src/frontend/.dockerignore

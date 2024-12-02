@@ -1,6 +1,7 @@
 import requests
 import gzip
 import logging
+import os
 from pathlib import Path
 import pandas as pd
 from tqdm import tqdm
@@ -10,8 +11,9 @@ from datetime import datetime
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler("download_noaa.log"), logging.StreamHandler()],
+    handlers=[logging.FileHandler("/data/download_noaa.log"), logging.StreamHandler()],
 )
+
 
 class NOAADataDownloader:
     FRENCH_STATIONS = [
@@ -23,21 +25,26 @@ class NOAADataDownloader:
         "073840-99999",  # Bordeaux
         "071100-99999",  # Lille
         "073860-99999",  # Nantes
-        "074810-99999"   # Nice
+        "074810-99999",  # Nice
     ]
 
-    def __init__(self, base_path: str = "data/raw"):
+    def __init__(self, base_path: str = "/data/raw"):
         self.base_path = Path(base_path)
         self.base_path.mkdir(parents=True, exist_ok=True)
+        # Récupérer les années depuis les variables d'environnement
+        self.start_year = int(os.getenv("NOAA_START_YEAR", "2019"))
+        self.end_year = int(os.getenv("NOAA_END_YEAR", "2023"))
 
     def _download_file_with_progress(self, url: str, output_file: Path) -> bool:
         try:
             response = requests.get(url, stream=True)
             response.raise_for_status()
-            total_size = int(response.headers.get('content-length', 0))
+            total_size = int(response.headers.get("content-length", 0))
 
-            with tqdm(total=total_size, unit='B', unit_scale=True, desc=output_file.name) as pbar:
-                with open(output_file, 'wb') as f:
+            with tqdm(
+                total=total_size, unit="B", unit_scale=True, desc=output_file.name
+            ) as pbar:
+                with open(output_file, "wb") as f:
                     for chunk in response.iter_content(chunk_size=8192):
                         if chunk:
                             f.write(chunk)
@@ -97,12 +104,14 @@ class NOAADataDownloader:
                     try:
                         with gzip.open(output_file, "rb") as f_in:
                             df = pd.read_csv(f_in)
-                            if 'DAMAGE_PROPERTY' in df.columns:
-                                df = df[df['DAMAGE_PROPERTY'].notna()]
-                            output_csv = output_file.with_suffix('.csv')
+                            if "DAMAGE_PROPERTY" in df.columns:
+                                df = df[df["DAMAGE_PROPERTY"].notna()]
+                            output_csv = output_file.with_suffix(".csv")
                             df.to_csv(output_csv, index=False)
                         output_file.unlink()
-                        logging.info(f"Données Storm Events {data_type} {year} traitées")
+                        logging.info(
+                            f"Données Storm Events {data_type} {year} traitées"
+                        )
                     except Exception as e:
                         logging.error(f"Erreur traitement {filename}: {str(e)}")
 
@@ -114,7 +123,7 @@ class NOAADataDownloader:
         output_dir.mkdir(exist_ok=True)
 
         for station in stations:
-            station_id = station.split('-')[0]  # Remove the -99999 suffix
+            station_id = station.split("-")[0]  # Remove the -99999 suffix
             url = f"{base_url}/{station_id}.TXT"
             output_file = output_dir / f"{station_id}.txt"
 
@@ -130,7 +139,7 @@ class NOAADataDownloader:
                 logging.error(f"Dossier {data_type} manquant")
                 continue
 
-            size = sum(f.stat().st_size for f in data_dir.rglob('*') if f.is_file())
+            size = sum(f.stat().st_size for f in data_dir.rglob("*") if f.is_file())
             size_gb = size / (2**30)
             total_size += size
             logging.info(f"Taille {data_type}: {size_gb:.2f}GB")
@@ -141,42 +150,43 @@ class NOAADataDownloader:
         if total_size_gb > 10:
             logging.warning("⚠️ Les données dépassent la limite de 10GB recommandée")
 
+        # Vérification HDFS
+        try:
+            from hdfs import InsecureClient
+
+            hdfs_client = InsecureClient(
+                f'http://{os.getenv("HADOOP_NAMENODE", "namenode")}:9870'
+            )
+            hdfs_client.makedirs("/data/raw")
+            logging.info("Connexion HDFS établie")
+        except Exception as e:
+            logging.error(f"Erreur connexion HDFS: {str(e)}")
+
+
 def main():
-    START_YEAR = 2019
-    END_YEAR = 2023
-
-    print(f"""
-    🌤 Téléchargement des données NOAA
-    ================================
-    Période: {START_YEAR}-{END_YEAR}
-    Stations: 9 stations françaises
-    Sources:
-    1. GSOD (Global Surface Summary of the Day)
-    2. ISD (Integrated Surface Database)
-    3. Storm Events Database
-    4. METAR (Observations météo en temps réel)
-    """)
-
-    proceed = input("Continuer ? (y/n): ")
-    if proceed.lower() != 'y':
-        return
-
+    logging.info("Démarrage du téléchargement des données NOAA")
     downloader = NOAADataDownloader()
 
     try:
-        downloader.download_gsod_data(START_YEAR, END_YEAR)
-        downloader.download_isd_data(START_YEAR, END_YEAR)
-        downloader.download_storm_events(START_YEAR, END_YEAR)
+        # Téléchargement des données
+        logging.info(
+            f"Téléchargement des données de {downloader.start_year} à {downloader.end_year}"
+        )
+        downloader.download_gsod_data(downloader.start_year, downloader.end_year)
+        downloader.download_isd_data(downloader.start_year, downloader.end_year)
+        downloader.download_storm_events(downloader.start_year, downloader.end_year)
         downloader.download_metar_data()
+
+        # Vérification des données
         downloader.verify_data()
-        print("\n✅ Téléchargement terminé !")
+        logging.info("✅ Téléchargement terminé avec succès")
 
     except KeyboardInterrupt:
-        print("\n⚠️ Téléchargement interrompu")
+        logging.warning("⚠️ Téléchargement interrompu par l'utilisateur")
     except Exception as e:
-        logging.error(f"Erreur critique: {str(e)}")
-        print("\n❌ Erreur lors du téléchargement")
+        logging.error(f"❌ Erreur critique: {str(e)}")
         raise
+
 
 if __name__ == "__main__":
     main()
